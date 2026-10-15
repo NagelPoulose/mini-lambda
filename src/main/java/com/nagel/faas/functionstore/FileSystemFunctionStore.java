@@ -5,12 +5,13 @@ import java.nio.file.Path;
 import java.nio.file.Files;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.nagel.faas.domain.FunctionDefinition;
 import tools.jackson.databind.json.JsonMapper;
 
-public final class FileSystemFunctionStore {
+public final class FileSystemFunctionStore implements FunctionStore {
 
 	private final Path functionsDirectory;
 	private final JsonMapper jsonMapper;
@@ -23,6 +24,7 @@ public final class FileSystemFunctionStore {
 		this.jsonMapper = Objects.requireNonNull(jsonMapper, "jsonMapper must not be null");
 	}
 
+	@Override
 	public void save(FunctionDefinition function) {
 		Objects.requireNonNull(function, "function must not be null");
 
@@ -42,6 +44,40 @@ public final class FileSystemFunctionStore {
 		} catch (IOException exception) {
 			throw new FunctionStoreException(
 					"Failed to save function " + function.id(),
+					exception
+			);
+		}
+	}
+
+	@Override
+	public Optional<FunctionDefinition> findById(UUID id) {
+		Objects.requireNonNull(id, "id must not be null");
+
+		Path functionDirectory = functionsDirectory.resolve(id.toString());
+		if (Files.notExists(functionDirectory)) {
+			return Optional.empty();
+		}
+
+		try {
+			FunctionMetadata metadata = jsonMapper.readValue(
+					functionDirectory.resolve("metadata.json").toFile(),
+					FunctionMetadata.class
+			);
+			String source = Files.readString(
+					functionDirectory.resolve("function.py")
+			);
+
+			return Optional.of(
+					new FunctionDefinition(
+							metadata.id(),
+							metadata.name(),
+							source,
+							metadata.createdAt()
+					)
+			);
+		} catch (IOException exception) {
+			throw new FunctionStoreException(
+					"Failed to load function " + id,
 					exception
 			);
 		}
